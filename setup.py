@@ -8,9 +8,9 @@ with open("requirements.txt", "r") as fh:
 
 setuptools.setup(
     name="corpusinterface",
-    version="0.1.5",
+    version="0.2.0",
     author="Robert Lieck",
-    author_email="robert.lieck@epfl.ch",
+    author_email="robert.lieck@durham.ac.uk",
     description="tools for loading corpora",
     long_description=long_description,
     long_description_content_type="text/markdown",
