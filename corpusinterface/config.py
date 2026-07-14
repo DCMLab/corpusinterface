@@ -211,11 +211,14 @@ def set_key_value(corpus, key, value):
         __config__[corpus][_key_to_str(key)] = _value_to_str(value)
 
 
-def set(corpus, **kwargs):
+def set_values(corpus, **kwargs):
     for key, value in kwargs.items():
         set_key_value(corpus, key=key, value=value)
 
 
+def set(*args, **kwargs):
+    warn("config.set() is deprecated. Use config.set_values() instead.", DeprecationWarning)
+    return set_values(*args, **kwargs)
 def add_corpus(corpus, exists_ok=False, **kwargs):
     corpus = _corpus_to_str(corpus)
     if corpus in __config__:
@@ -225,7 +228,7 @@ def add_corpus(corpus, exists_ok=False, **kwargs):
         # add empty corpus
         __config__[corpus] = {}
     # add key-value pairs
-    set(corpus, **kwargs)
+    set_values(corpus, **kwargs)
 
 
 def set_default_key_value(key, value=None):
@@ -233,7 +236,7 @@ def set_default_key_value(key, value=None):
 
 
 def set_default(**kwargs):
-    set(__DEFAULT__, **kwargs)
+    set_values(__DEFAULT__, **kwargs)
 
 
 ################################################

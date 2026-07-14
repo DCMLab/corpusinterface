@@ -6,7 +6,7 @@ import shutil
 from corpusinterface import config
 from corpusinterface.config import init_config, reset_config, load_config, clear_config, summary, \
     get, corpora, \
-    set, set_key_value, set_default, \
+    set_values, set_key_value, set_default, \
     add_corpus, delete_corpus, corpus_params, getbool
 from corpusinterface.util import CorpusExistsError, CorpusNotFoundError, DuplicateCorpusError, DuplicateDefaultsError, \
     ConfigCycleError, DownloadFailedError, \
@@ -218,7 +218,7 @@ class Test(TestCase):
 
         # set value in section to None
         self.assertFalse("YYY" in config.__config__["XXX"])
-        set("XXX", YYY=None)
+        set_values("XXX", YYY=None)
         self.assertTrue("YYY" in config.__config__["XXX"])
         self.assertEqual(None, config.__config__["XXX"]["YYY"])
         self.assertNotEqual('None', config.__config__["XXX"]["YYY"])
@@ -236,7 +236,7 @@ class Test(TestCase):
         self.assertRaises(CorpusNotFoundError, lambda: set_key_value("Does not exist", key="key", value="value"))
 
         # set value in section
-        set("XXX", YYY="ZZZ")
+        set_values("XXX", YYY="ZZZ")
         self.assertEqual("ZZZ", config.__config__["XXX"]["YYY"])
         self.assertEqual("ZZZ", config.__config__["XXX"]["yyy"])  # keys are case in-sensitive
         self.assertEqual("ZZZ", config.get("XXX", "yyy"))  # keys are case in-sensitive
