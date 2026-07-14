@@ -8,10 +8,11 @@ import gzip, bz2, lzma
 import shutil
 
 import git
+from tqdm.auto import tqdm
 
 from . import config
 from .corpora import FileCorpus, SingleFileCorpus, JSONFileCorpus, JSONLinesFileCorpus, CSVFileCorpus
-from .util import __DOWNLOAD__, __ACCESS__, __LOADER__, __URL__, __FILE__, \
+from .util import __DOWNLOAD__, __DOWNLOAD_ARGS__, __ACCESS__, __LOADER__, __URL__, __FILE__, \
     CorpusNotFoundError, DownloadFailedError, LoadingFailedError
 
 
@@ -147,15 +148,48 @@ def download(corpus, **kwargs):
         try:
             if access == 'git':
                 # clone directly into the target directory
-                git.Repo.clone_from(url=kwargs[__URL__], to_path=path)
+                url = kwargs[__URL__]
+                try:
+                    # split __DOWNLOAD_ARGS__ on commas into separate arguments
+                    download_args = [a.strip() for a in kwargs[__DOWNLOAD_ARGS__].split(',')]
+                except KeyError:
+                    download_args = []
+                # clone with progress bar
+                with tqdm(desc=f"Cloning {kwargs[__URL__]}", unit="B", unit_scale=True) as pbar:
+                    # derive from right base
+                    class ProgressPrinter(git.RemoteProgress):
+                        def update(self, op_code, cur_count, max_count=None, message=''):
+                            if max_count:
+                                pbar.total = max_count
+                            pbar.n = cur_count
+                            pbar.refresh()
+                    # clone
+                    git.Repo.clone_from(url=url, to_path=path, progress=ProgressPrinter(), multi_options=download_args)
             elif access in ['zip', 'tar.gz', 'file', 'gz', 'xz', 'bz2']:
                 # download to temporary file
                 url = kwargs[__URL__]
+                # callback for progress bar
+                pbar = None
+                def reporthook(block_num, block_size, total_size):
+                    nonlocal pbar
+                    if pbar is None:
+                        pbar = tqdm(
+                            total=total_size if total_size > 0 else None,
+                            unit="B",
+                            unit_scale=True,
+                            unit_divisor=1024,
+                            desc=url,
+                        )
+                    downloaded = block_num * block_size
+                    pbar.update(downloaded - pbar.n)
                 try:
                     # urlopen(url)
-                    tmp_file_name, _ = urlretrieve(url=url) # TODO: urlretrieve may be deprecated
+                    tmp_file_name, _ = urlretrieve(url=url, reporthook=reporthook) # TODO: urlretrieve may be deprecated
                 except (HTTPError, URLError) as e:
-                    raise DownloadFailedError(f"Opening url '{url}' failed: {e}")
+                    raise DownloadFailedError(f"Opening url '{url}' failed: {e}") from e
+                finally:
+                    if pbar is not None:
+                        pbar.close()
                 # open with custom method
                 if access == 'tar.gz':
                     with tarfile.open(tmp_file_name, "r:gz") as tmp_file:

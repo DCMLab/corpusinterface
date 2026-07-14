@@ -16,6 +16,7 @@ __PARENT__ = "parent"
 __ACCESS__ = "access"
 __URL__ = "url"
 __DOWNLOAD__ = "download"
+__DOWNLOAD_ARGS__ = "download_args"
 __LOADER__ = "loader"
 
 
