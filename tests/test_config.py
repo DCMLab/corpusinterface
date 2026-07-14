@@ -43,19 +43,19 @@ class Test(TestCase):
 
     def test_load_config(self):
         # assert default config was loaded and DEFAULT section is there
-        self.assertTrue(__DEFAULT__ in config.config)
+        self.assertTrue(__DEFAULT__ in config.__config__)
         # assert the test config was not yet loaded
-        self.assertFalse('a test section' in config.config)
+        self.assertFalse('a test section' in config.__config__)
         # load it
         load_config('tests/test_config.ini', merge_defaults=True)
         # assert it's there now
-        self.assertTrue('a test section' in config.config)
+        self.assertTrue('a test section' in config.__config__)
         # assert the multi-line value is correctly parsed
-        self.assertEqual('test values\nover multiple lines', config.config['a test section']['with'])
+        self.assertEqual('test values\nover multiple lines', config.__config__['a test section']['with'])
         # assert empty values are correctly parsed (also check that capitalisation is ignored)
-        self.assertEqual(None, config.config['a test section']['A VALUE THAT IS'])
+        self.assertEqual(None, config.__config__['a test section']['A VALUE THAT IS'])
         # assert references are correctly parsed
-        self.assertEqual('backref to test values\nover multiple lines', config.config['a test section']['and'])
+        self.assertEqual('backref to test values\nover multiple lines', config.__config__['a test section']['and'])
 
         # assert error for duplicate corpora if only merging defaults
         self.assertRaises(DuplicateCorpusError, lambda: load_config('tests/test_config.ini', merge_defaults=True))
@@ -202,26 +202,26 @@ class Test(TestCase):
 
     def test_set_and_add_corpus(self):
         # add corpus
-        self.assertFalse("XXX" in config.config)
+        self.assertFalse("XXX" in config.__config__)
         add_corpus("XXX")
-        self.assertTrue("XXX" in config.config)
+        self.assertTrue("XXX" in config.__config__)
 
         # raise when existing corpus is reset
         self.assertRaises(CorpusExistsError, lambda: add_corpus("XXX"))
 
         # setting non-string corpus warns
         with self.assertWarns(RuntimeWarning):
-            self.assertFalse(1 in config.config)
+            self.assertFalse(1 in config.__config__)
             add_corpus(1)
-            self.assertFalse(1 in config.config)
-            self.assertTrue("1" in config.config)
+            self.assertFalse(1 in config.__config__)
+            self.assertTrue("1" in config.__config__)
 
         # set value in section to None
-        self.assertFalse("YYY" in config.config["XXX"])
+        self.assertFalse("YYY" in config.__config__["XXX"])
         set("XXX", YYY=None)
-        self.assertTrue("YYY" in config.config["XXX"])
-        self.assertEqual(None, config.config["XXX"]["YYY"])
-        self.assertNotEqual('None', config.config["XXX"]["YYY"])
+        self.assertTrue("YYY" in config.__config__["XXX"])
+        self.assertEqual(None, config.__config__["XXX"]["YYY"])
+        self.assertNotEqual('None', config.__config__["XXX"]["YYY"])
 
         # warning for non-string keys and values (except None for value)
         with self.assertWarns(RuntimeWarning):
@@ -237,7 +237,11 @@ class Test(TestCase):
 
         # set value in section
         set("XXX", YYY="ZZZ")
-        self.assertEqual("ZZZ", config.config["XXX"]["YYY"])
+        self.assertEqual("ZZZ", config.__config__["XXX"]["YYY"])
+        self.assertEqual("ZZZ", config.__config__["XXX"]["yyy"])  # keys are case in-sensitive
+        self.assertEqual("ZZZ", config.get("XXX", "yyy"))  # keys are case in-sensitive
+        self.assertEqual("ZZZ", config.get("XXX", "YYY"))
+        self.assertRaises(KeyError, lambda: config.__config__["xxx"]["yyy"])  # sections are case-sensitive
 
         # set value in DEFAULT
         set_default(AAA=None)
@@ -262,21 +266,21 @@ class Test(TestCase):
 
     def test_clear(self):
         # check that the default section is there
-        self.assertEqual([config.__DEFAULT__], list(config.config))
+        self.assertEqual([config.__DEFAULT__], list(config.__config__))
         # clear config (don't remove default)
         clear_config()
         # check only config section is left
-        self.assertEqual([config.__DEFAULT__], list(config.config))
+        self.assertEqual([config.__DEFAULT__], list(config.__config__))
         # check its not empty
-        self.assertGreater(len(list(config.config[config.__DEFAULT__])), 0)
+        self.assertGreater(len(list(config.__config__[config.__DEFAULT__])), 0)
         # now also clear default
         clear_config(clear_default=True)
         # check its empty now
-        self.assertEqual(len(list(config.config[config.__DEFAULT__])), 0)
+        self.assertEqual(len(list(config.__config__[config.__DEFAULT__])), 0)
         # reset
         reset_config()
         # check that there is the default section in config again
-        self.assertEqual([config.__DEFAULT__], list(config.config))
+        self.assertEqual([config.__DEFAULT__], list(config.__config__))
 
     def test_summary(self):
         clear_config(clear_default=True)

@@ -111,7 +111,7 @@ def _get_config_obj():
 # The configuration data is stored in and accessed via a ConfigParser object
 ############################################################################
 
-config = _get_config_obj()
+__config__ = _get_config_obj()
 
 
 ##############################################################
@@ -124,13 +124,13 @@ def init_config(*args, default=None, home=None, local=None):
     if default:
         load_config(default_file)
     elif default is None:
-        config.read(default_file)
+        __config__.read(default_file)
 
     # config files in default config directory
     if home or home is None:
         found_config = False
         for path in get_default_config_dir().glob('*.ini'):
-            config.read(path)
+            __config__.read(path)
             found_config = True
         if home and not found_config:
             raise FileNotFoundError(f"Could not find any config files (*.ini) in directory "
@@ -141,7 +141,7 @@ def init_config(*args, default=None, home=None, local=None):
     if local:
         load_config(local_file)
     elif local is None:
-        config.read(local_file)
+        __config__.read(local_file)
 
     # load explicitly provided files
     for file in args:
@@ -163,7 +163,7 @@ def load_config(file, merge_duplicates=False, merge_defaults=False):
         # check for duplicate sections/corpora
         if not merge_duplicates:
             # get sections as sets
-            old_sections = python_set(config.sections())
+            old_sections = python_set(__config__.sections())
             new_sections = python_set(tmp_config.sections())
             # check whether they are disjoints and raise if they are not
             if not old_sections.isdisjoint(new_sections):
@@ -171,11 +171,11 @@ def load_config(file, merge_duplicates=False, merge_defaults=False):
                                            f"({old_sections.intersection(new_sections)}). "
                                            f"Use merge_duplicates=True to merge them.")
         # check for non-empty defaults on both configs
-        if not merge_defaults and config.defaults() and tmp_config.defaults():
+        if not merge_defaults and __config__.defaults() and tmp_config.defaults():
             raise DuplicateDefaultsError(f"Existing config and config from file '{file}' both contain non-empty "
                                          f"defaults. Use merge_defaults=True to merge them.")
     with open(file) as f:
-        config.read_file(f)
+        __config__.read_file(f)
 
 
 def download_config(url, name, dir=None, load=False, **kwargs):
@@ -205,10 +205,10 @@ def download_config(url, name, dir=None, load=False, **kwargs):
 
 def set_key_value(corpus, key, value):
     corpus = _corpus_to_str(corpus)
-    if not corpus in config:
+    if not corpus in __config__:
         raise CorpusNotFoundError(f"Corpus '{corpus}' not found in config")
     else:
-        config[corpus][_key_to_str(key)] = _value_to_str(value)
+        __config__[corpus][_key_to_str(key)] = _value_to_str(value)
 
 
 def set(corpus, **kwargs):
@@ -218,12 +218,12 @@ def set(corpus, **kwargs):
 
 def add_corpus(corpus, exists_ok=False, **kwargs):
     corpus = _corpus_to_str(corpus)
-    if corpus in config:
+    if corpus in __config__:
         if not exists_ok:
             raise CorpusExistsError(f"Corpus '{corpus}' already exists in config. Use set() to modify values.")
     else:
         # add empty corpus
-        config[corpus] = {}
+        __config__[corpus] = {}
     # add key-value pairs
     set(corpus, **kwargs)
 
@@ -242,19 +242,19 @@ def set_default(**kwargs):
 
 def delete_corpus(corpus, not_exists_ok=False):
     corpus = _corpus_to_str(corpus)
-    if corpus not in config:
+    if corpus not in __config__:
         if not_exists_ok:
             return
         else:
             raise CorpusNotFoundError(f"Corpus '{corpus}' not found in config")
-    assert config.remove_section(section=corpus)
+    assert __config__.remove_section(section=corpus)
 
 
 def clear_config(clear_default=False):
-    for sec in config.sections():
-        assert config.remove_section(section=sec)
+    for sec in __config__.sections():
+        assert __config__.remove_section(section=sec)
     if clear_default:
-        config[__DEFAULT__] = {}
+        __config__[__DEFAULT__] = {}
 
 
 ##################################################
@@ -284,7 +284,7 @@ def _get(corpus, key, raw=False, _first_call=False):
             if parent is not None:
                 root = _get(parent, __PATH__)
             else:
-                root = config[_corpus_to_str(corpus)][__ROOT__]
+                root = __config__[_corpus_to_str(corpus)][__ROOT__]
                 if root is None:
                     root = get_default_root_dir()
                 else:
@@ -296,7 +296,7 @@ def _get(corpus, key, raw=False, _first_call=False):
             return root
         elif key == __PATH__:
             # get raw value
-            path = config[_corpus_to_str(corpus)][__PATH__]
+            path = __config__[_corpus_to_str(corpus)][__PATH__]
             # if not specified, default to corpus name
             if path is None:
                 path = corpus
@@ -308,21 +308,21 @@ def _get(corpus, key, raw=False, _first_call=False):
             else:
                 return _get(corpus, __ROOT__) / path
     # default (and if raw is requested): return values directly from config
-    return config[_corpus_to_str(corpus)][_key_to_str(key)]
+    return __config__[_corpus_to_str(corpus)][_key_to_str(key)]
 
 
 get.visited_list = []
 
 
 def corpora():
-    yield from config.sections()
+    yield from __config__.sections()
 
 
 def corpus_params(corpus, raw=False):
     corpus = _corpus_to_str(corpus)
-    if corpus not in config:
+    if corpus not in __config__:
         raise CorpusNotFoundError(f"Corpus '{corpus}' not found in config")
-    for key in config[corpus]:
+    for key in __config__[corpus]:
         yield key, get(corpus, key, raw=raw)
 
 
