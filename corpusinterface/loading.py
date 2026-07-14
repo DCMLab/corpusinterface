@@ -16,20 +16,68 @@ from .util import __DOWNLOAD__, __DOWNLOAD_ARGS__, __ACCESS__, __LOADER__, __URL
     CorpusNotFoundError, DownloadFailedError, LoadingFailedError
 
 
-# dictionary with loader functions
-loaders = {
-    "FileCorpus": FileCorpus.init,
-    "SingleFileCorpus": SingleFileCorpus,
-    "JSONFileCorpus": JSONFileCorpus,
-    "JSONLinesFileCorpus": JSONLinesFileCorpus,
-    "CSVFileCorpus": CSVFileCorpus,
+# mappings of string values provided in corpus config or as keywords in load()
+_keyword_mappings = {
+    __LOADER__: {
+        "FileCorpus": FileCorpus,
+        "SingleFileCorpus": SingleFileCorpus,
+        "JSONFileCorpus": JSONFileCorpus,
+        "JSONLinesFileCorpus": JSONLinesFileCorpus,
+        "CSVFileCorpus": CSVFileCorpus,
+    }
 }
 
-def populate_kwargs(corpus, kwargs_dict):
-    if corpus is not None:
-        return {**dict(config.corpus_params(corpus)), **kwargs_dict}
+def add_keyword_mapping(keyword, value, mapping, overwrite=False):
+    """
+    Add a keyword mapping to be used in load(). All keyword mappings are stored in _keyword_mappings.
+
+    Keywords specified in the config or passed explicitly to load() can be mapped to arbitrary values. For instance,
+    if you have a custom file reader function that you want to use with FileCorpus, you can add a mapping like this:
+
+    Example:
+        >>> def my_custom_reader(**kwargs):
+        ...     # your custom loading logic here
+        ...     pass
+        >>> add_keyword_mapping("file_reader", "my custom reader", my_custom_reader)
+        # Now you can use it in load():
+        >>> load(..., file_reader="my custom reader")
+        # Or in your config INI, you can add a line ``file_reader: my custom reader``.
+
+    The load() function automatically populates keyword arguments from config and tries to remap them if a matching
+    keyword mapping is found. This is passed to the loader function. If FileCorpus is used as loader function,
+    it remembers it and uses it when calling the data() iterator. By the way, loader functions are also defined via
+    keyword mappings.
+    """
+    _keyword_mappings.setdefault(keyword, {})
+    if not overwrite and value in _keyword_mappings[keyword]:
+        raise ValueError(f"Keyword '{keyword}' already has value '{value}' mapped to '{_keyword_mappings[keyword][value]}'")
     else:
-        return kwargs_dict.copy()
+        _keyword_mappings[keyword][value] = mapping
+
+
+def remove_keyword_mapping(keyword, value):
+    try:
+        _keyword_mappings[keyword].pop(value)
+    except KeyError as e:
+        raise KeyError(f"Keyword '{keyword}' does not have value '{value}' mapped to anything.") from e
+    if not _keyword_mappings[keyword]:
+        _keyword_mappings.pop(keyword)
+
+
+def populate_kwargs(corpus, kwargs_dict):
+    # populate keyword arguments from config
+    if corpus is not None:
+        kwargs = {**config.corpus_params(corpus), **kwargs_dict}
+    else:
+        kwargs = kwargs_dict.copy()
+    # remap predefined keywords
+    for k, v in kwargs.items():
+        if isinstance(v, str):
+            try:
+                kwargs[k] = _keyword_mappings[k][v]
+            except KeyError:
+                pass  # ignore unknown keywords
+    return kwargs
 
 
 def remove(corpus, silent=False, not_exists_ok=False, not_dir_ok=False, **kwargs):
@@ -83,10 +131,7 @@ def load(corpus=None, **kwargs):
             loader = populated_kwargs[__LOADER__]
             # if string was provided, lookup loader function
             if isinstance(loader, str):
-                try:
-                    loader = loaders[loader]
-                except KeyError:
-                    raise LoadingFailedError(f"Unknown {__LOADER__} '{loader}'.")
+                raise LoadingFailedError(f"Unknown {__LOADER__} '{loader}'.")
             # make sure loader is callable
             if not callable(loader):
                 raise LoadingFailedError(f"{__LOADER__} '{loader}' is not callable.")

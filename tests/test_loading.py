@@ -4,7 +4,7 @@ from pathlib import Path
 from io import StringIO
 import shutil
 
-from corpusinterface.loading import download, load, remove, CorpusNotFoundError, DownloadFailedError, LoadingFailedError
+from corpusinterface.loading import download, load, remove, CorpusNotFoundError, DownloadFailedError, LoadingFailedError, add_keyword_mapping, remove_keyword_mapping, _keyword_mappings
 from corpusinterface import config
 from corpusinterface.corpora import FileCorpus
 from corpusinterface import util
@@ -138,3 +138,12 @@ class Test(TestCase):
 
         # path pointing to file raises
         self.assertRaises(NotADirectoryError, lambda: remove(corpus, path='tests/FileCorpus/file_1'))
+
+    def test_keyword_mapping(self):
+        original_keyword_mappings = _keyword_mappings.copy()
+        add_keyword_mapping("keyword1", "value1", "mapping1")
+        self.assertEqual(_keyword_mappings["keyword1"]["value1"], "mapping1")
+        self.assertRaises(ValueError, lambda: add_keyword_mapping("keyword1", "value1", "mapping2"))
+        remove_keyword_mapping("keyword1", "value1")
+        self.assertEqual(_keyword_mappings, original_keyword_mappings)
+        self.assertRaises(KeyError, lambda: remove_keyword_mapping("keyword1", "value1"))
