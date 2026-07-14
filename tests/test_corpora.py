@@ -3,93 +3,121 @@ from unittest import TestCase
 from pathlib import Path
 import json
 
-from corpusinterface.corpora import Data, FileCorpus, SingleFileCorpus, JSONFileCorpus, JSONLinesFileCorpus, CSVFileCorpus
-
-class TestData(TestCase):
-
-    def test_data(self):
-        data = Data()
-        self.assertRaises(NotImplementedError, lambda: data.metadata())
-        self.assertRaises(NotImplementedError, lambda: data.data())
+from corpusinterface.corpora import FileCorpusBase, FileCorpus, ZipFileCorpus, TarFileCorpus, SingleFileCorpus, JSONFileCorpus, JSONLinesFileCorpus, CSVFileCorpus
+from corpusinterface.loading import load, add_keyword_mapping, remove_keyword_mapping
 
 
 class TestFileCorpus(TestCase):
 
     def test_init(self):
         # 'path' has to be provided
-        self.assertRaises(TypeError, lambda: FileCorpus.init(not_path="tests/DoesNotExist"))
+        self.assertRaises(TypeError, lambda: FileCorpus(not_path="tests/DoesNotExist"))
         # positional arguments not allowed
-        self.assertRaises(TypeError, lambda: FileCorpus.init("tests/DoesNotExist"))
+        self.assertRaises(TypeError, lambda: FileCorpus("tests/DoesNotExist"))
         # additional arguments ignored
-        self.assertEqual("FileCorpus(tests/FileCorpus)", str(FileCorpus.init(path="tests/FileCorpus",
+        self.assertEqual("FileCorpus(tests/FileCorpus)", str(FileCorpus(path="tests/FileCorpus",
                                                                              other_arguments="other")))
 
     def test_files(self):
         # init with directory that does not exist
-        self.assertRaises(FileNotFoundError, lambda: FileCorpus.init(path="tests/DoesNotExist"))
+        self.assertRaises(FileNotFoundError, lambda: FileCorpus(path="tests/DoesNotExist"))
         # init with file instead of directory
-        self.assertRaises(NotADirectoryError, lambda: FileCorpus.init(path="tests/FileCorpus/file_1"))
-        # init with defaults
-        corpus = FileCorpus.init(path="tests/FileCorpus")
-        # check it prints as expected
-        self.assertEqual("FileCorpus(tests/FileCorpus)", str(corpus))
-        # check file list
-        self.assertEqual(sorted(["tests/FileCorpus/file_1",
-                                 "tests/FileCorpus/file_2",
-                                 "tests/FileCorpus/sub_dir/file_3",
-                                 "tests/FileCorpus/sub_dir/file_4"]), sorted(str(f) for f in corpus.files()))
+        self.assertRaises(NotADirectoryError, lambda: FileCorpus(path="tests/FileCorpus/file_1"))
 
-        # file inclusion regex
-        corpus = FileCorpus.init(path="tests/FileCorpus", file_regex="^file_[23]$")
-        self.assertEqual(sorted(["tests/FileCorpus/file_2",
-                                 "tests/FileCorpus/sub_dir/file_3"]), sorted(str(f) for f in corpus.files()))
-        # path inclusion regex
-        corpus = FileCorpus.init(path="tests/FileCorpus", path_regex=".+/sub_dir/.+$")
-        self.assertEqual(sorted(["tests/FileCorpus/sub_dir/file_3",
-                                 "tests/FileCorpus/sub_dir/file_4"]), sorted(str(f) for f in corpus.files()))
-        # file exclusion regex
-        corpus = FileCorpus.init(path="tests/FileCorpus", file_exclude_regex="^file_[23]$")
-        self.assertEqual(sorted(["tests/FileCorpus/file_1",
-                                 "tests/FileCorpus/sub_dir/file_4"]), sorted(str(f) for f in corpus.files()))
-        # path exclusion regex
-        corpus = FileCorpus.init(path="tests/FileCorpus", path_exclude_regex=".+/sub_dir/.+$")
-        self.assertEqual(sorted(["tests/FileCorpus/file_1",
-                                 "tests/FileCorpus/file_2"]), sorted(str(f) for f in corpus.files()))
+        for CorpusClass, extension in zip([FileCorpus, ZipFileCorpus, TarFileCorpus, TarFileCorpus],
+                                          ['', '.zip', '.tar', '.tar.gz']):
+            path = Path(f"tests/FileCorpus{extension}")
+
+            # init with defaults
+            with load(loader=CorpusClass, path=path) as corpus:
+                # check it prints as expected
+                self.assertEqual(f"{CorpusClass.__name__}(tests/FileCorpus{extension})", str(corpus))
+                # check file list
+                self.assertEqual(sorted([f"tests/FileCorpus{extension}/file_1",
+                                         f"tests/FileCorpus{extension}/file_2",
+                                         f"tests/FileCorpus{extension}/sub_dir/file_3",
+                                         f"tests/FileCorpus{extension}/sub_dir/file_4"]),
+                                 sorted(str(f) for f in corpus.files()))
+
+            # file inclusion regex
+            with load(loader=CorpusClass, path=path, file_regex="^file_[23]$") as corpus:
+                self.assertEqual(sorted([f"tests/FileCorpus{extension}/file_2",
+                                         f"tests/FileCorpus{extension}/sub_dir/file_3"]),
+                                 sorted(str(f) for f in corpus.files()))
+            # path inclusion regex
+            with load(loader=CorpusClass, path=path, path_regex=".+/sub_dir/.+$") as corpus:
+                self.assertEqual(sorted([f"tests/FileCorpus{extension}/sub_dir/file_3",
+                                         f"tests/FileCorpus{extension}/sub_dir/file_4"]),
+                                 sorted(str(f) for f in corpus.files()))
+            # file exclusion regex
+            with load(loader=CorpusClass, path=path, file_exclude_regex="^file_[23]$") as corpus:
+                self.assertEqual(sorted([f"tests/FileCorpus{extension}/file_1",
+                                         f"tests/FileCorpus{extension}/sub_dir/file_4"]),
+                                 sorted(str(f) for f in corpus.files()))
+            # path exclusion regex
+            with load(loader=CorpusClass, path=path, path_exclude_regex=".+/sub_dir/.+$") as corpus:
+                self.assertEqual(sorted([f"tests/FileCorpus{extension}/file_1",
+                                         f"tests/FileCorpus{extension}/file_2"]),
+                                 sorted(str(f) for f in corpus.files()))
 
     def test_data(self):
-        # with defaults, data should just return paths
-        corpus = FileCorpus.init(path="tests/FileCorpus")
-        self.assertEqual(sorted(["tests/FileCorpus/file_1",
-                                 "tests/FileCorpus/file_2",
-                                 "tests/FileCorpus/sub_dir/file_3",
-                                 "tests/FileCorpus/sub_dir/file_4"]), sorted(str(f) for f in corpus.data()))
+        file_list = list(sorted(["file_1",
+                                 "file_2",
+                                 "sub_dir/file_3",
+                                 "sub_dir/file_4"]))
 
-        # custom file_reader
-        def file_reader(path, prefix, **kwargs):
-            return f"{prefix}: {path}"
+        # custom file_reader (gets open file-like object to read from)
+        def file_reader(file, prefix, **kwargs):
+            with file.open("rt") as f:
+                return f"{prefix}: {f.read()}"
 
-        corpus = FileCorpus.init(path="tests/FileCorpus", file_reader=file_reader, prefix="path")
-        self.assertEqual(sorted(["path: tests/FileCorpus/file_1",
-                                 "path: tests/FileCorpus/file_2",
-                                 "path: tests/FileCorpus/sub_dir/file_3",
-                                 "path: tests/FileCorpus/sub_dir/file_4"]), sorted(str(f) for f in corpus.data()))
-        self.assertEqual("tests/FileCorpus", str(corpus.metadata()))
+        for CorpusClass, extension in zip([FileCorpus, ZipFileCorpus, TarFileCorpus, TarFileCorpus],
+                                          ['', '.zip', '.tar', '.tar.gz']):
+            path = Path(f"tests/FileCorpus{extension}")
+
+            # without custom file reader (data and files just return PathLike objects)
+            with load(loader=CorpusClass, path=path) as corpus:
+                self.assertEqual(str(path), str(corpus.metadata()))
+                self.assertEqual([f"{path / f} | {Path(f).name}" for f in file_list], sorted(f"{f} | {f.name}" for f in corpus.files()))
+                self.assertRaises(TypeError, lambda: list(corpus.data()))  # no file reader defined
+
+            # with custom file_reader
+            expected_file_list = [f"{path / f}" for f in file_list]
+            expected_data_list = [f"path: {(f.split('/')[-1])} content" for f in file_list]
+            # 1. explicitly pass file_reader function
+            with load(loader=CorpusClass, path=path, file_reader=file_reader, prefix="path") as corpus:
+                self.assertEqual(expected_file_list, sorted(str(f) for f in corpus.files()))
+                self.assertEqual(expected_data_list, sorted(f for f in corpus.data()))
+                # checking 'return_files'
+                self.assertEqual(list(zip(expected_file_list, expected_data_list)), sorted((str(f), d) for f, d in corpus.data(return_files=True)))
+                # checking 'lazy_load'
+                self.assertEqual(expected_data_list, sorted(f.load() for f in corpus.data(lazy_load=True)))
+            # 2. pass undefined string (no mapping performed, raises TypeError)
+            with load(loader=CorpusClass, path=path, file_reader="my_file_reader", prefix="path") as corpus:
+                self.assertEqual(expected_file_list, sorted(str(f) for f in corpus.files()))
+                self.assertRaises(TypeError, lambda: sorted(f for f in corpus.data()))  # FAILS
+            # 3. define mapping so lookup works
+            add_keyword_mapping(FileCorpusBase.__FILE_READER__, "my_file_reader", file_reader)
+            with load(loader=CorpusClass, path=path, file_reader="my_file_reader", prefix="path") as corpus:
+                self.assertEqual(expected_file_list, sorted(str(f) for f in corpus.files()))
+                self.assertEqual(expected_data_list, sorted(f for f in corpus.data()))
+            remove_keyword_mapping(FileCorpusBase.__FILE_READER__, "my_file_reader")
 
     def test_metadata(self):
         # with defaults, metadata should just return path
-        corpus = FileCorpus.init(path="tests/FileCorpus")
-        self.assertEqual("tests/FileCorpus", str(corpus.metadata()))
+        with FileCorpus(path="tests/FileCorpus") as corpus:
+            self.assertEqual("tests/FileCorpus", str(corpus.metadata()))
 
         # custom reader
         def meta_reader(path, prefix, **kwargs):
             return f"{prefix}: {path}"
 
-        corpus = FileCorpus.init(path="tests/FileCorpus", meta_reader=meta_reader, prefix="path")
-        self.assertEqual("path: tests/FileCorpus", str(corpus.metadata()))
-        self.assertEqual(sorted(["tests/FileCorpus/file_1",
-                                 "tests/FileCorpus/file_2",
-                                 "tests/FileCorpus/sub_dir/file_3",
-                                 "tests/FileCorpus/sub_dir/file_4"]), sorted(str(f) for f in corpus.data()))
+        with FileCorpus(path="tests/FileCorpus", meta_reader=meta_reader, prefix="path") as corpus:
+            self.assertEqual("path: tests/FileCorpus", str(corpus.metadata()))
+            self.assertEqual(sorted(["tests/FileCorpus/file_1",
+                                     "tests/FileCorpus/file_2",
+                                     "tests/FileCorpus/sub_dir/file_3",
+                                     "tests/FileCorpus/sub_dir/file_4"]), sorted(str(f) for f in corpus.files()))
 
 class TestSingleFileCorpus(TestCase):
 

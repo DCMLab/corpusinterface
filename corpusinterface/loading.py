@@ -11,7 +11,7 @@ import git
 from tqdm.auto import tqdm
 
 from . import config
-from .corpora import FileCorpus, SingleFileCorpus, JSONFileCorpus, JSONLinesFileCorpus, CSVFileCorpus
+from .corpora import FileCorpus, ZipFileCorpus, TarFileCorpus, SingleFileCorpus, JSONFileCorpus, JSONLinesFileCorpus, CSVFileCorpus
 from .util import __DOWNLOAD__, __DOWNLOAD_ARGS__, __ACCESS__, __LOADER__, __URL__, __FILE__, \
     CorpusNotFoundError, DownloadFailedError, LoadingFailedError
 
@@ -20,6 +20,8 @@ from .util import __DOWNLOAD__, __DOWNLOAD_ARGS__, __ACCESS__, __LOADER__, __URL
 _keyword_mappings = {
     __LOADER__: {
         "FileCorpus": FileCorpus,
+        "ZipFileCorpus": ZipFileCorpus,
+        "TarFileCorpus": TarFileCorpus,
         "SingleFileCorpus": SingleFileCorpus,
         "JSONFileCorpus": JSONFileCorpus,
         "JSONLinesFileCorpus": JSONLinesFileCorpus,
