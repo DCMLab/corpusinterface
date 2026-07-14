@@ -10,7 +10,7 @@ from corpusinterface.config import init_config, reset_config, load_config, clear
     add_corpus, delete_corpus, corpus_params, getbool
 from corpusinterface.util import CorpusExistsError, CorpusNotFoundError, DuplicateCorpusError, DuplicateDefaultsError, \
     ConfigCycleError, DownloadFailedError, \
-    __DEFAULT__, __INFO__, __ROOT__, __PARENT__, __PATH__, __URL__, __ACCESS__, __LOADER__
+    __DEFAULT__, __INFO__, __ROOT__, __PARENT__, __PATH__, __URL__, __ACCESS__, __LOADER__, __INHERIT__
 
 
 class Test(TestCase):
@@ -143,7 +143,7 @@ class Test(TestCase):
                                  (__ACCESS__, None),
                                  (__URL__, None),
                                  (__LOADER__, "FileCorpus")]),
-                         sorted(list(corpus_params("Test Sub-Corpus"))))
+                         sorted(list(corpus_params("Test Sub-Corpus").items())))
 
         # corpus_params with unknown corpus raises
         self.assertRaises(CorpusNotFoundError, lambda: list(corpus_params("Unknown Corpus")))
@@ -317,3 +317,61 @@ class Test(TestCase):
         config.reset_default_root_dir()
         self.assertEqual(config.get_default_root_dir(), Path("~/corpora").expanduser())
         self.assertEqual(config.get_default_config_dir(), Path("~/corpora/config").expanduser())
+
+    def test_inherit(self):
+        config.add_corpus("Parent", key1="val1", key2="val2", key3="val3")
+        config.add_corpus("Child", parent="Parent", key1="child_val1")
+        config.add_corpus("GrandChild", parent="Child", key2="grand_child_val2")
+        for default_inheritance in [None, False, True, False, None]:
+            if default_inheritance is True:
+                config.set_values(__DEFAULT__, **{__INHERIT__: True})
+            elif default_inheritance is False:
+                config.set_values(__DEFAULT__, **{__INHERIT__: False})
+            else:
+                config.unset_value(__DEFAULT__, __INHERIT__, not_exists_ok=True)
+
+            # without inheritance
+            if default_inheritance in [None, False]:
+                self.assertEqual("child_val1", config.get("Child", "key1"))  # explicitly set
+                self.assertRaises(KeyError, lambda: config.get("Child", "key2"))  # not set
+                self.assertRaises(KeyError, lambda: config.get("Child", "key3"))  # not set
+
+                self.assertRaises(KeyError, lambda: config.get("GrandChild", "key1"))  # not set
+                self.assertEqual("grand_child_val2", config.get("GrandChild", "key2"))  # explicitly set
+                self.assertRaises(KeyError, lambda: config.get("GrandChild", "key3"))  # not set
+
+                # switch on inheritance for Child
+                config.set_values("Child", **{__INHERIT__: True})
+
+                self.assertEqual("child_val1", config.get("Child", "key1"))  # explicitly set
+                self.assertEqual("val2", config.get("Child", "key2"))  # inherited from parent
+                self.assertEqual("val3", config.get("Child", "key3"))  # inherited from parent
+
+                # grandchild not affected
+                self.assertRaises(KeyError, lambda: config.get("GrandChild", "key1"))  # not set
+                self.assertEqual("grand_child_val2", config.get("GrandChild", "key2"))  # explicitly set
+                self.assertRaises(KeyError, lambda: config.get("GrandChild", "key3"))  # not set
+
+                config.unset_value("Child", __INHERIT__)  # unset
+            else:
+                self.assertEqual("child_val1", config.get("Child", "key1"))  # explicitly set
+                self.assertEqual("val2", config.get("Child", "key2"))  # inherited from parent
+                self.assertEqual("val3", config.get("Child", "key3"))  # inherited from parent
+
+                self.assertEqual("child_val1", config.get("GrandChild", "key1"))  # inherited from parent ("Child")
+                self.assertEqual("grand_child_val2", config.get("GrandChild", "key2"))  # explicitly set
+                self.assertEqual("val3", config.get("GrandChild", "key3"))  # inherited from grandparent ("Parent")
+
+                # switch off inheritance for Child
+                config.set_values("Child", **{__INHERIT__: False})
+
+                self.assertEqual("child_val1", config.get("Child", "key1"))  # explicitly set
+                self.assertRaises(KeyError, lambda: config.get("Child", "key2"))  # not set
+                self.assertRaises(KeyError, lambda: config.get("Child", "key3"))  # not set
+
+                # grandchild now only inherits from direct parent ("Child")
+                self.assertEqual("child_val1", config.get("GrandChild", "key1"))  # inherited from parent ("Child")
+                self.assertEqual("grand_child_val2", config.get("GrandChild", "key2"))  # explicitly set
+                self.assertRaises(KeyError, lambda: config.get("GrandChild", "key3"))  # not set
+
+                config.unset_value("Child", __INHERIT__)  # unset

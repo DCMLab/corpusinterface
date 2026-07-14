@@ -6,7 +6,7 @@ from urllib.request import urlretrieve
 from urllib.error import URLError, HTTPError
 import shutil
 
-from .util import __DEFAULT__, __ROOT__, __PARENT__, __PATH__, DownloadFailedError, \
+from .util import __DEFAULT__, __ROOT__, __PARENT__, __INHERIT__, __PATH__, DownloadFailedError, \
     CorpusExistsError, CorpusNotFoundError, DuplicateCorpusError, DuplicateDefaultsError, ConfigCycleError
 
 # remember built-in set
@@ -90,7 +90,11 @@ def _key_to_str(key):
         warn(f"key '{key}' is not a string and will be converted (note that keys are case insensitive)",
              RuntimeWarning)
         key = str(key)
-    return key
+    key_lower = key.lower()
+    if key_lower != key:
+        warn(f"keys are case insensitive; key '{key}' is converted to lower-case for consistency '{key_lower}'",
+             RuntimeWarning)
+    return key_lower
 
 
 def _value_to_str(value):
@@ -219,6 +223,17 @@ def set_values(corpus, **kwargs):
 def set(*args, **kwargs):
     warn("config.set() is deprecated. Use config.set_values() instead.", DeprecationWarning)
     return set_values(*args, **kwargs)
+
+
+def unset_value(corpus, key, not_exists_ok=False):
+    if not corpus in __config__:
+        raise CorpusNotFoundError(f"Corpus '{corpus}' not found in config")
+    if not_exists_ok:
+        __config__[corpus].pop(key, None)
+    else:
+        __config__[corpus].pop(key)
+
+
 def add_corpus(corpus, exists_ok=False, **kwargs):
     corpus = _corpus_to_str(corpus)
     if corpus in __config__:
@@ -264,28 +279,24 @@ def clear_config(clear_default=False):
 # functions for retrieving information from config
 ##################################################
 
-def get(corpus, key, raw=False):
-    return _get(corpus=corpus, key=key, raw=raw, _first_call=True)
-
-
-def _get(corpus, key, raw=False, _first_call=False):
+def _get(corpus, key, raw=False, _first_call=True):
     """
-    The actual recursive getter called by get()
+    Wrapper around raw config values that handles special parameters, such as __ROOT__ and __PATH__.
     """
     if _first_call:
-        get.visited_list = []
+        _get.visited_parents = []
     if not raw:
         # unless raw values are requested, return processed versions of root and path
         if key == __ROOT__:
             # for sub-corpora the root is replaced by the parent's path
-            parent = _get(corpus, __PARENT__)
-            if parent in get.visited_list:
+            parent = _get(corpus, __PARENT__, _first_call=False)
+            if parent in _get.visited_parents:
                 raise ConfigCycleError(f"Cycle in parent-child relation when revisiting '{parent}' "
-                                       f"(visited before: {get.visited_list})")
+                                       f"(visited before: {_get.visited_parents})")
             else:
-                get.visited_list.append(parent)
+                _get.visited_parents.append(parent)
             if parent is not None:
-                root = _get(parent, __PATH__)
+                root = _get(parent, __PATH__, _first_call=False)
             else:
                 root = __config__[_corpus_to_str(corpus)][__ROOT__]
                 if root is None:
@@ -309,12 +320,11 @@ def _get(corpus, key, raw=False, _first_call=False):
             if path.is_absolute():
                 return path
             else:
-                return _get(corpus, __ROOT__) / path
+                return _get(corpus, __ROOT__, _first_call=False) / path
     # default (and if raw is requested): return values directly from config
     return __config__[_corpus_to_str(corpus)][_key_to_str(key)]
 
-
-get.visited_list = []
+_get.visited_parents = []
 
 
 def corpora():
@@ -322,11 +332,42 @@ def corpora():
 
 
 def corpus_params(corpus, raw=False):
+    return _corpus_params(corpus, raw=raw, _first_call=True)
+
+
+def _corpus_params(corpus, raw=False, _first_call=False):
+    # reset on first call
+    if _first_call:
+        _corpus_params.visited_parents = []
+    # map value to string if necessary
     corpus = _corpus_to_str(corpus)
+    # check if corpus exists
     if corpus not in __config__:
         raise CorpusNotFoundError(f"Corpus '{corpus}' not found in config")
-    for key in __config__[corpus]:
-        yield key, get(corpus, key, raw=raw)
+    # get parameters
+    params = {key: _get(corpus, key, raw=raw) for key in __config__[corpus]}
+    # populate with parent parameters if requested
+    if getbool(params.get(__INHERIT__, False)):
+        # get parent
+        parent = _get(corpus, __PARENT__)
+        # check for cycles
+        if parent in _corpus_params.visited_parents:
+            raise ConfigCycleError(f"Cycle in parent-child relation when revisiting '{parent}' "
+                                   f"(visited before: {_corpus_params.visited_parents})")
+        else:
+            _corpus_params.visited_parents.append(parent)
+        # merge with parent parameters (child overwrites parent, except for __INHERIT__)
+        if parent is not None:
+            parent_params = _corpus_params(parent, raw=raw)
+            return {**parent_params, **params, __INHERIT__: parent_params.get(__INHERIT__, False)}
+    return params
+
+_corpus_params.visited_parents = []
+
+
+def get(corpus, key, raw=False):
+    # get all parameters to account for inheritance
+    return corpus_params(corpus, raw=raw)[_key_to_str(key)]
 
 
 def summary(corpus=None, raw=False):
@@ -337,7 +378,7 @@ def summary(corpus=None, raw=False):
         # summarise corpus by providing all parameters
         corpus = _corpus_to_str(corpus)
         s = f"[{corpus}]"
-        for key, val in corpus_params(corpus, raw=raw):
+        for key, val in corpus_params(corpus, raw=raw).items():
             s += f"\n    {key}: {val}"
         return s
 
